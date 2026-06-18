@@ -139,3 +139,147 @@ Use $git-agent-workflow to prepare an agent-safe Git workflow for this coding ta
 ```
 
 The skill should be invoked when the work involves Git-sensitive coding changes, PR preparation, reviewability, traceability, or multi-agent coordination.
+
+---
+
+# Git Agent Workflow Skill 中文版
+
+`git-agent-workflow` 是一个 Codex skill，用于在 AI 辅助编码中落实面向 Agent 的 Git 工作纪律。它把 AI 时代 Git 版本管理的实践整理成一套可复用流程，帮助 Agent 让代码变更保持隔离、可审查、可回滚、可追溯。
+
+## 来源
+
+本 skill 根据以下文章设计：
+
+- 标题：`万字干货｜AI 时代的 Git 版本管理，你用对了吗？`
+- 来源：`TRAE.ai`
+- 发布时间：`2026-04-28 17:40:38`
+- 原文链接：<https://mp.weixin.qq.com/s/70hz6sYNwxErRkP7dkY8-Q>
+
+文章的核心观点是：Agentic coding 改变了传统 Git 工作流的基本假设。Agent 可以自主修改大量文件、并发执行任务、产生噪声 diff，并且不会天然把决策意图保存在版本历史中。因此，团队需要把 Git 规范显式化、工具化、自动化。
+
+## 适用情境
+
+当 Agent 需要处理以下任务时，使用这个 skill：
+
+- 在保持 Git 工作区整洁的前提下修改代码。
+- 将 Agent 产生的大 diff 拆成 atomic commit。
+- 在长任务中创建 checkpoint commit。
+- 编写带有 Agent 上下文和 Git trailer 的 commit message。
+- 准备或审查 AI Agent 生成的 PR。
+- 避免覆盖人工尚未提交的本地 WIP。
+- 使用 `git worktree` 隔离多个并发 Agent。
+- 为 `AGENT.md` 编写 Git 行为规范。
+- 判断 plain Git、`jj`、GitButler 或 stacked PR 是否适合当前流程。
+- 为团队设计 AI Agent 参与开发时的版本管理、审查和追溯机制。
+
+这个 skill 不是通用 Git 教程。它假设 Agent 已经掌握基本 Git 命令，重点补充 AI Agent 参与开发后新增的工程约束。
+
+## 人工约束和安全边界
+
+这个 skill 明确把以下行为保留给人工决策：
+
+- 未经明确指令，不覆盖、回滚或暂存人工未提交的改动。
+- 未经仓库规范或用户允许，不直接在 `main` 或 `master` 上工作。
+- 未经明确批准，不 force push，也不改写已经发布的历史。
+- 未经明确批准，不合并 PR、不删除分支、不修改 branch protection 规则。
+- 未经用户同意，不把 `jj`、GitButler、gh-stack、hook 或新的 CI 门禁引入仓库。
+- 不把“文本层面无冲突 merge”视为“语义正确”。
+- 不提交 secret、临时调试代码、无关格式化或生成文件噪声。
+
+在 interactive rebase 或历史改写前，Agent 应先给出整理方案。对于认证、计费、数据迁移、公共 API、共享 package 等高风险路径，Agent 应明确说明风险和验证缺口，而不是只把 Git 操作完成视为任务完成。
+
+## 工具调用和执行流程
+
+这个 skill 主要提供工具使用规范，不额外捆绑脚本。典型工具调用如下。
+
+### Git 状态检查
+
+```bash
+git status --short --branch
+git branch --show-current
+git diff --stat
+git diff
+git diff --staged
+git log --oneline main..HEAD
+```
+
+在编辑前、提交前、最终交付前都应检查这些信息。
+
+### 分支和 Worktree 隔离
+
+```bash
+git fetch origin
+git switch -c agent/<topic> origin/main
+git worktree add ../repo-task-<topic> -b agent/<topic> origin/main
+git worktree list
+git worktree remove ../repo-task-<topic>
+```
+
+当多个 Agent 并发执行，或任务风险较高时，应使用 worktree 隔离工作目录。
+
+### 有意图的暂存和 Atomic Commit
+
+```bash
+git add -p
+git commit
+git commit --amend
+git log --format='%(trailers:key=Agent-Task,valueonly)' main..HEAD
+git log --grep='^Agent-Task:' --all
+```
+
+最终提交应遵循 Conventional Commits，并包含 `Agent-Task`、`Agent-Model`、`Agent-Decision`、`Agent-Limitation` 等 trailer。
+
+### 历史整理
+
+```bash
+git rebase -i main
+git diff --stat main...HEAD
+```
+
+只有在分支历史可以安全改写时才使用。Agent 应先提出 rebase 方案，再执行历史整理。
+
+### GitHub 或 PR 工具
+
+根据环境，Agent 可以使用 GitHub connector、`gh` 或 GitHub Web UI：
+
+- 读取仓库和 PR 元数据。
+- 检查 PR diff 和变更文件。
+- 在提交推送后创建 PR。
+- 补充 PR 上下文、验证记录和已知限制。
+
+这个 skill 不假设 GitHub Actions 日志可以只通过 connector 获取；CI 日志排查可能需要 `gh` 或 Web UI。
+
+### 可选的新型版本管理工具
+
+仅当用户已经采用或明确批准时使用：
+
+```bash
+jj split
+jj absorb
+jj op undo
+```
+
+GitButler 适用于虚拟分支、hunk 分配和 stacked branch 工作流，但不应在未告知用户的情况下引入。
+
+## 仓库结构
+
+```text
+.
+├── SKILL.md
+├── agents/
+│   └── openai.yaml
+└── references/
+    └── templates.md
+```
+
+- `SKILL.md`：skill 主说明和触发描述。
+- `references/templates.md`：commit message、checkpoint commit、PR 描述、`AGENT.md` 规则、branch protection checklist 和历史整理 prompt 模板。
+- `agents/openai.yaml`：skill 的 UI 元数据。
+
+## 典型调用方式
+
+```text
+Use $git-agent-workflow to prepare an agent-safe Git workflow for this coding task.
+```
+
+当任务涉及 Git 敏感代码变更、PR 准备、可审查性、可追溯性或多 Agent 协同时，应调用这个 skill。
