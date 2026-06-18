@@ -1,0 +1,4 @@
+interface:
+  display_name: "Git Agent Workflow"
+  short_description: "Manage Git safely for AI coding agents"
+  default_prompt: "Use $git-agent-workflow to prepare an agent-safe Git workflow for this coding task."
